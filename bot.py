@@ -386,9 +386,11 @@ def tg_call(method, data=None, files=None):
     raise RuntimeError("telegram %s failed: %s" % (method, last))
 
 
-def send_text(text, reply_to=None):
+def send_text(text, reply_to=None, silent=False):
     _, chat = _creds()
     data = {"chat_id": chat, "text": text, "disable_web_page_preview": "true"}
+    if silent:
+        data["disable_notification"] = "true"
     if reply_to:
         data["reply_to_message_id"] = str(reply_to)
         data["allow_sending_without_reply"] = "true"
@@ -574,6 +576,24 @@ def run():
                 state["down_notified"] = True
             except Exception:
                 traceback.print_exc()
+
+    # one quiet "I am alive" message per day (first run after 09:00 Tehran time)
+    try:
+        day = tehran(now, "%Y-%m-%d")
+        hour = dt.datetime.fromtimestamp(now, TEHRAN).hour
+        if (hour >= 9 and state.get("hb_day") != day and state["fail_runs"] == 0
+                and not state["down_notified"]):
+            last24 = len([z for z in state["zones"] if z["t0"] > now - 86400])
+            active = len([z for z in state["zones"] if z["status"] == "active"])
+            lines = ["✅ ربات روشن است (گزارش روزانه)",
+                     "🔎 %d نماد زیر نظر است" % len(SYMBOLS),
+                     "📊 ۲۴ ساعت گذشته: %d ناحیه" % last24,
+                     "⏳ ناحیه‌های منتظر ورود: %d" % active]
+            send_text("\n".join(RLM + x for x in lines), silent=True)
+            state["hb_day"] = day
+            save_state(state)
+    except Exception:
+        traceback.print_exc()
 
     # weekly heartbeat commit keeps GitHub from pausing the schedule
     if now - state.get("hb_ts", 0) > 6 * 86400:
