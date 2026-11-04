@@ -108,10 +108,11 @@
    "dir": "SELL",
    "id": "EURUSD-S-1104-1930",
    "msg_id": 37,
-   "status": "active",
+   "status": "used",
    "sym": "EURUSD",
    "t0": 1793808000,
-   "top": 1.1275228261947632
+   "top": 1.1275228261947632,
+   "touch_t": 1793813429
   },
   {
    "bottom": 4038.0,
