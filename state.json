@@ -87,10 +87,11 @@
    "dir": "SELL",
    "id": "SPX500-S-1104-0430",
    "msg_id": 32,
-   "status": "active",
+   "status": "used",
    "sym": "SPX500",
    "t0": 1793754000,
-   "top": 7633.5
+   "top": 7633.5,
+   "touch_t": 1793776200
   },
   {
    "bottom": 1.11831796169281,
