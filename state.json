@@ -173,10 +173,11 @@
    "dir": "BUY",
    "id": "NAS100-B-1106-1830",
    "msg_id": 51,
-   "status": "active",
+   "status": "used",
    "sym": "NAS100",
    "t0": 1793977200,
-   "top": 27220.75
+   "top": 27220.75,
+   "touch_t": 1793977500
   }
  ]
 }
