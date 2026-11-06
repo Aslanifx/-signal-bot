@@ -29,13 +29,13 @@ except Exception:  # pragma: no cover
 #                              SETTINGS
 # =====================================================================
 SWING_N = 1                  # 1 = swing of 3 candles (middle one is the extreme). 2 = 5 candles (fewer signals)
-LOOKBACK_BARS = 150          # how far back (1H candles) to look for swings
-MAX_SWEEP_TO_MSS_BARS = 48   # max 1H candles between the liquidity hunt and the structure break
+LOOKBACK_BARS = 260          # how far back (1H candles, ~10 days) the hunted swing / swings may be
+MAX_SWEEP_TO_MSS_BARS = 200  # max 1H candles between the liquidity hunt and the structure break (~8 days)
 CHART_CANDLES = 70           # candles shown on the chart
-MAX_SIGNAL_AGE_H = 3         # a zone signal older than this (e.g. after an outage) is not sent
+MAX_SIGNAL_AGE_H = 12        # a zone signal older than this (e.g. after a long outage) is not sent
 ZONE_MAX_AGE_H = 96          # a zone that was never touched is dropped after this many hours
 FAIL_ALERT_RUNS = 12         # data down for this many runs in a row -> warning in channel
-MAX_CATCHUP = 8              # max missed 1H candles processed in one run
+MAX_CATCHUP = 24             # max missed 1H candles processed in one run
 
 H1 = 3600
 CLOSE_MARGIN = 90            # seconds to wait after a candle ends before trusting it
@@ -197,22 +197,32 @@ def _is_sl(c, i):
     return True
 
 
+def _last_swing_low(c, start_i, lowest_i):
+    for i in range(start_i, max(SWING_N, lowest_i) - 1, -1):
+        if _is_sl(c, i):
+            return i
+    return None
+
+
 def detect_sell(c):
     """
     Looks ONLY at the last candle of list c (the just-closed 1H candle, index j).
-    SELL zone =
-      1) a swing high gets hunted: a candle's wick goes above it but that candle
-         does NOT close above it (first touch of that swing high),
-      2) no candle closes above that swing high afterwards,
-      3) the most recent swing low before the hunt candle is the structure low L,
-      4) candle j is the FIRST candle that touches L after the hunt, and its
-         CLOSE (body) is below L  -> MSS.
-    Zone = from L (broken swing low) up to the highest wick of the hunt.
+    SELL setup:
+      1) a swing high (SH) is hunted: a candle's wick goes above it but that candle
+         does NOT close above it (first touch of SH). SH may be old (days).
+      2) no candle closes above SH afterwards.
+      3) the swing low L that gets broken is, either
+           mode 1: the last swing low before the hunt candle, or
+           mode 2: the swing low just before SH (the low that built the hunted high).
+      4) candle j is the FIRST candle that touches L (after L was formed) and its
+         CLOSE (body) is below L  -> market structure shift.
+    Zone lines: top = SH (hunted swing level), bottom = L (broken swing low).
+    Returns a list (0, 1 or more zones, one per broken level).
     """
     j = len(c) - 1
     if j < 6:
-        return None
-    best = None
+        return []
+    found = {}
     first = max(SWING_N, j - LOOKBACK_BARS)
     for s in range(first, j - SWING_N - 1):
         if not _is_sh(c, s):
@@ -231,24 +241,27 @@ def detect_sell(c):
             continue
         if any(c[k]["c"] > sh for k in range(h + 1, j)):
             continue
-        li = None                                    # structure low = last swing low before the hunt
-        for i in range(h - SWING_N, max(SWING_N, h - LOOKBACK_BARS) - 1, -1):
-            if _is_sl(c, i):
-                li = i
-                break
-        if li is None:
-            continue
-        lv = c[li]["l"]
-        if any(c[k]["l"] <= lv for k in range(li + 1, j)):   # must still be untouched
-            continue
-        if not (c[j]["c"] < lv):                     # first touch must CLOSE below with the body
-            continue
-        ext = max(c[k]["h"] for k in range(h, j + 1))
-        cand = {"dir": "SELL", "top": ext, "bottom": lv, "swept": sh,
-                "swing_i": s, "sweep_i": h, "struct_i": li, "mss_i": j}
-        if best is None or h > best["sweep_i"]:
-            best = cand
-    return best
+        options = (
+            (1, _last_swing_low(c, h - SWING_N, h - LOOKBACK_BARS)),
+            (2, _last_swing_low(c, s - 1, s - LOOKBACK_BARS)),
+        )
+        for mode, li in options:
+            if li is None:
+                continue
+            lv = c[li]["l"]
+            if not (lv < sh):
+                continue
+            if any(c[k]["l"] <= lv for k in range(li + 1, j)):   # must still be untouched
+                continue
+            if not (c[j]["c"] < lv):                 # first touch must CLOSE below with the body
+                continue
+            cand = {"dir": "SELL", "mode": mode, "top": sh, "bottom": lv, "swept": sh,
+                    "swing_i": s, "sweep_i": h, "struct_i": li, "mss_i": j}
+            old = found.get(li)
+            if (old is None or (h, sh) > (old["sweep_i"], old["swept"])
+                    or ((h, sh) == (old["sweep_i"], old["swept"]) and mode < old["mode"])):
+                found[li] = cand
+    return [found[k] for k in sorted(found)]
 
 
 def _mirror(c):
@@ -257,12 +270,12 @@ def _mirror(c):
 
 def detect_buy(c):
     """BUY is the exact mirror image of SELL (prices multiplied by -1)."""
-    r = detect_sell(_mirror(c))
-    if not r:
-        return None
-    return {"dir": "BUY", "top": -r["bottom"], "bottom": -r["top"], "swept": -r["swept"],
-            "swing_i": r["swing_i"], "sweep_i": r["sweep_i"],
-            "struct_i": r["struct_i"], "mss_i": r["mss_i"]}
+    out = []
+    for r in detect_sell(_mirror(c)):
+        out.append({"dir": "BUY", "mode": r["mode"], "top": -r["bottom"], "bottom": -r["top"],
+                    "swept": -r["swept"], "swing_i": r["swing_i"], "sweep_i": r["sweep_i"],
+                    "struct_i": r["struct_i"], "mss_i": r["mss_i"]})
+    return out
 
 
 def find_touch(zone, c5):
@@ -297,8 +310,8 @@ def render_chart(name, d, sub, dec):
     from matplotlib.patches import Rectangle
 
     j = len(sub) - 1
-    start = min(j - CHART_CANDLES + 1, d["struct_i"] - 10)
-    start = max(0, start, j - 120)
+    start = min(j - CHART_CANDLES + 1, min(d["swing_i"], d["struct_i"], d["sweep_i"]) - 8)
+    start = max(0, start, j - 180)
     view = sub[start:]
     n = len(view)
     buy = d["dir"] == "BUY"
@@ -319,10 +332,19 @@ def render_chart(name, d, sub, dec):
         face = "#ffffff" if x["c"] >= x["o"] else "#4a4a4a"
         ax.add_patch(Rectangle((i - 0.32, lo), 0.64, max(hi - lo, tiny), facecolor=face,
                                edgecolor="#222222", linewidth=0.9, zorder=3))
-    x0 = max(0, d["struct_i"] - start - 1)
+    # line 1 = the hunted swing level (starts at that swing candle)
+    # line 2 = the broken swing level (starts at that swing candle)
+    if buy:
+        top_start, bot_start = d["struct_i"], d["swing_i"]
+    else:
+        top_start, bot_start = d["swing_i"], d["struct_i"]
+    x_top = max(0, top_start - start)
+    x_bot = max(0, bot_start - start)
     xr = n - 1 + 7
-    ax.hlines([d["top"], d["bottom"]], x0, xr, colors=col, linewidth=1.7, zorder=4)
-    ax.fill_between([x0, xr], [d["bottom"]] * 2, [d["top"]] * 2, color=col, alpha=0.10, zorder=1)
+    ax.hlines(d["top"], x_top, xr, colors=col, linewidth=1.7, zorder=4)
+    ax.hlines(d["bottom"], x_bot, xr, colors=col, linewidth=1.7, zorder=4)
+    xf = max(x_top, x_bot)
+    ax.fill_between([xf, xr], [d["bottom"]] * 2, [d["top"]] * 2, color=col, alpha=0.10, zorder=1)
     ax.text(xr - 0.2, d["top"], fmt(d["top"], dec), color=col, fontsize=9, va="bottom", ha="right")
     ax.text(xr - 0.2, d["bottom"], fmt(d["bottom"], dec), color=col, fontsize=9, va="top", ha="right")
     ax.set_xlim(-1, xr + 1)
@@ -407,17 +429,28 @@ def send_photo(png, caption, reply_to=None):
 
 
 def zone_id(name, d, t_close):
-    return "%s-%s-%s" % (name, "B" if d["dir"] == "BUY" else "S", tehran(t_close, "%m%d-%H%M"))
+    return "%s-%s%d-%s" % (name, "B" if d["dir"] == "BUY" else "S", d.get("mode", 1),
+                           tehran(t_close, "%m%d-%H%M"))
 
 
-def caption_zone(name, d, zid, t_close, dec, prefix=""):
+def caption_zone(name, d, zid, t_close, dec, prefix="", sweep_t=None):
     buy = d["dir"] == "BUY"
+    if d.get("mode", 1) == 1:
+        kind = "نوع ۱: شکست اولین سویینگ %s قبل از هانت" % ("سقف" if buy else "کف")
+    else:
+        kind = "نوع ۲: شکست %s که %s هانت‌شده را ساخته بود" % (
+            "سقفی" if buy else "کفی", "کفِ" if buy else "سقفِ")
     lines = [
         "%s ناحیه معاملاتی %s تشکیل شد" % ("🟢" if buy else "🔴", "خرید" if buy else "فروش"),
         "📌 نماد: #%s  #%s" % (name, "BUY" if buy else "SELL"),
         "⏱ تایم‌فریم: ۱ ساعته",
-        "🔺 سقف ناحیه: %s" % fmt(d["top"], dec),
-        "🔻 کف ناحیه: %s" % fmt(d["bottom"], dec),
+        "🔺 سقف ناحیه (%s): %s" % ("سویینگ شکسته‌شده" if buy else "سقف هانت‌شده", fmt(d["top"], dec)),
+        "🔻 کف ناحیه (%s): %s" % ("کف هانت‌شده" if buy else "سویینگ شکسته‌شده", fmt(d["bottom"], dec)),
+        "🧩 %s" % kind,
+    ]
+    if sweep_t:
+        lines.append("🧲 زمان هانت: %s (وقت تهران)" % tehran(sweep_t))
+    lines += [
         "🕒 کلوز کندل: %s (وقت تهران)" % tehran(t_close),
         "🔖 کد ناحیه: %s" % zid,
         "⏳ منتظر اولین ورود قیمت به ناحیه ...",
@@ -498,9 +531,8 @@ def process_1h(sym, state, now):
         sub = closed[:j + 1]
         t_close = sub[-1]["t"] + H1
         if now - t_close <= MAX_SIGNAL_AGE_H * 3600:
-            for d in (detect_sell(sub), detect_buy(sub)):
-                if d:
-                    send_zone(sym, state, d, sub, t_close)
+            for d in detect_sell(sub) + detect_buy(sub):
+                send_zone(sym, state, d, sub, t_close)
         else:
             log("[%s] candle %s is too old, skipped" % (name, tehran(t_close)))
         state["last_1h"][name] = sub[-1]["t"]
@@ -513,8 +545,8 @@ def send_zone(sym, state, d, sub, t_close, prefix=""):
     if any(z["id"] == zid for z in state["zones"]):
         return
     png = render_chart(name, d, sub, dec)
-    mid = send_photo(png, caption_zone(name, d, zid, t_close, dec, prefix))
-    state["zones"].append({"id": zid, "sym": name, "dir": d["dir"], "top": d["top"],
+    mid = send_photo(png, caption_zone(name, d, zid, t_close, dec, prefix, sub[d["sweep_i"]]["t"]))
+    state["zones"].append({"id": zid, "sym": name, "dir": d["dir"], "mode": d.get("mode", 1), "top": d["top"],
                            "bottom": d["bottom"], "t0": int(t_close), "status": "active",
                            "msg_id": mid})
     save_state(state)
@@ -635,10 +667,10 @@ def demo_zone(direction):
     base = int(now_ts() // H1) * H1 - 9 * H1
     if direction == "SELL":
         sub = pattern_candles(SELL_PATTERN, base, scale=210.0)
-        d = detect_sell(sub)
+        d = detect_sell(sub)[0]
     else:
         sub = pattern_candles(SELL_PATTERN, base, scale=210.0, mirror_at=200.0)
-        d = detect_buy(sub)
+        d = detect_buy(sub)[0]
     return sub, d
 
 
@@ -648,7 +680,8 @@ def mode_test():
     t_close = sub[-1]["t"] + H1
     zid = "TEST-S-0000-0000"
     png = render_chart("NAS100", d, sub, 2)
-    mid = send_photo(png, caption_zone("NAS100", d, zid, t_close, 2, "🧪 این فقط نمونه آزمایشی است"))
+    mid = send_photo(png, caption_zone("NAS100", d, zid, t_close, 2, "🧪 این فقط نمونه آزمایشی است",
+                                       sub[d["sweep_i"]]["t"]))
     z = {"id": zid, "sym": "NAS100", "dir": "SELL", "bottom": d["bottom"], "top": d["top"]}
     send_text(text_entry("NAS100", z, {"t": t_close + 600}, 2), reply_to=mid)
     log("test messages sent")
@@ -672,6 +705,7 @@ def mode_chatid():
 
 
 def mode_backtest():
+    """Scan the last 7 days (about 170 closed 1H candles) of every symbol."""
     found = []
     for sym in SYMBOLS:
         try:
@@ -681,79 +715,113 @@ def mode_backtest():
             continue
         closed = candles[:-1]
         cnt = 0
-        for j in range(40, len(closed)):
+        for j in range(max(40, len(closed) - 170), len(closed)):
             sub = closed[:j + 1]
-            for d in (detect_sell(sub), detect_buy(sub)):
-                if d:
-                    cnt += 1
-                    found.append((sub[-1]["t"], sym, d, sub))
-                    log("  %s %s zone  %s .. %s  (candle close %s)" % (
-                        sym["name"], d["dir"], fmt(d["bottom"], sym["dec"]), fmt(d["top"], sym["dec"]),
-                        tehran(sub[-1]["t"] + H1)))
-        log("[%s] %d candles (%s) -> %d zone signals" % (sym["name"], len(closed), src, cnt))
+            for d in detect_sell(sub) + detect_buy(sub):
+                cnt += 1
+                found.append((sub[-1]["t"], sym, d, sub))
+                log("  %s %s mode%d zone %s .. %s (candle close %s)" % (
+                    sym["name"], d["dir"], d["mode"], fmt(d["bottom"], sym["dec"]),
+                    fmt(d["top"], sym["dec"]), tehran(sub[-1]["t"] + H1)))
+        log("[%s] last 7 days (%s): %d zone signals" % (sym["name"], src, cnt))
     found.sort(key=lambda r: r[0])
-    log("TOTAL zone signals: %d" % len(found))
+    log("TOTAL zone signals in 7 days: %d" % len(found))
     if not found:
-        send_text(RLM + "🧪 بک‌تست: در داده‌ی یک ماه اخیر هیچ ناحیه‌ای پیدا نشد.")
+        send_text(RLM + "🧪 بک‌تست: در ۷ روز اخیر هیچ ناحیه‌ای پیدا نشد.")
         return
-    send_text(RLM + "🧪 بک‌تست یک ماه اخیر: %d ناحیه پیدا شد. ۳ نمونه‌ی آخر برای مقایسه با ستاپ خودت:" % len(found))
+    rows = []
+    for t, sym, d, sub in found[-40:]:
+        rows.append("%s %s نوع %d | کلوز %s" % (
+            sym["name"], "خرید" if d["dir"] == "BUY" else "فروش", d["mode"],
+            tehran(sub[-1]["t"] + H1, "%m/%d %H:%M")))
+    head = "🧪 بک‌تست ۷ روز اخیر: %d ناحیه (وقت تهران)" % len(found)
+    send_text("\n".join(RLM + x for x in [head] + rows))
     for t, sym, d, sub in found[-3:]:
         t_close = sub[-1]["t"] + H1
         png = render_chart(sym["name"], d, sub, sym["dec"])
         send_photo(png, caption_zone(sym["name"], d, zone_id(sym["name"], d, t_close), t_close,
-                                     sym["dec"], "🧪 نمونه بک‌تست (قدیمی)"))
+                                     sym["dec"], "🧪 نمونه بک‌تست (قدیمی)", sub[d["sweep_i"]]["t"]))
 
 
 # =====================================================================
 #                      OFFLINE SELF TEST (no internet)
 # =====================================================================
+M2_PATTERN = [
+    (100, 101, 99, 100.5), (100.0, 100.5, 98.0, 100.2), (100.2, 102, 100, 101.8),
+    (101.8, 104, 101.5, 103.5), (103.5, 103.8, 102, 102.5), (102.5, 103.6, 101.0, 103.2),
+    (103.2, 103.7, 101.8, 102.0), (102.0, 104.6, 102.0, 103.0), (103.0, 103.5, 102.2, 102.6),
+    (102.6, 102.9, 99.8, 100.2), (100.2, 100.5, 97.0, 97.5),
+]
+
+
 def selftest():
     base = 1_700_000_000 - (1_700_000_000 % H1)
 
     def build(rows, mirror_at=None):
         return pattern_candles(rows, base, mirror_at=mirror_at)
 
-    # 1) SELL positive
+    def one(lst, mode=None):
+        assert len(lst) == 1, "expected exactly one zone, got %d" % len(lst)
+        if mode:
+            assert lst[0]["mode"] == mode, "wrong mode %s" % lst[0]["mode"]
+        return lst[0]
+
+    # 1) SELL positive: zone = hunted swing high (104.0) .. broken swing low (101.0)
     c = build(SELL_PATTERN)
-    d = detect_sell(c)
-    assert d and d["dir"] == "SELL", "sell not detected"
-    assert abs(d["top"] - 104.6) < 1e-9 and abs(d["bottom"] - 101.0) < 1e-9, "sell zone levels wrong"
-    assert detect_buy(c) is None, "buy must not appear on sell pattern"
+    d = one(detect_sell(c), 1)
+    assert d["dir"] == "SELL" and abs(d["top"] - 104.0) < 1e-9 and abs(d["bottom"] - 101.0) < 1e-9, "sell zone wrong"
+    assert detect_buy(c) == [], "buy must not appear on sell pattern"
     # 2) BUY positive (mirror)
     cb = build(SELL_PATTERN, mirror_at=200.0)
-    db = detect_buy(cb)
-    assert db and db["dir"] == "BUY", "buy not detected"
-    assert abs(db["top"] - 99.0) < 1e-9 and abs(db["bottom"] - 95.4) < 1e-9, "buy zone levels wrong"
-    assert detect_sell(cb) is None, "sell must not appear on buy pattern"
-    # 3) wick only through the swing low, then closes above -> no signal, and later break is NOT valid either
+    db = one(detect_buy(cb), 1)
+    assert db["dir"] == "BUY" and abs(db["top"] - 99.0) < 1e-9 and abs(db["bottom"] - 96.0) < 1e-9, "buy zone wrong"
+    assert detect_sell(cb) == [], "sell must not appear on buy pattern"
+    # 3) wick only through the swing low, then closes above -> no signal; later break is NOT valid either
     rows = list(SELL_PATTERN)
     rows[8] = (102.6, 102.9, 99.8, 101.5)
-    assert detect_sell(build(rows)) is None, "wick-only break must not signal"
+    assert detect_sell(build(rows)) == [], "wick-only break must not signal"
     rows.append((101.5, 101.8, 99.0, 99.5))
-    assert detect_sell(build(rows)) is None, "second-candle break must not signal"
+    assert detect_sell(build(rows)) == [], "second-candle break must not signal"
     # 4) hunt candle closes ABOVE the swing high -> not a hunt
     rows = list(SELL_PATTERN)
     rows[6] = (102.0, 104.6, 102.0, 104.3)
-    assert detect_sell(build(rows)) is None, "close above swing high must not signal"
+    assert detect_sell(build(rows)) == [], "close above swing high must not signal"
     # 5) a later candle closes above the swing high before the break -> invalid
     rows = list(SELL_PATTERN[:8]) + [(102.6, 104.5, 102.5, 104.3), (104.3, 104.4, 99.0, 99.5)]
-    assert detect_sell(build(rows)) is None, "close above swing high after hunt must invalidate"
+    assert detect_sell(build(rows)) == [], "close above swing high after hunt must invalidate"
     # 6) break candle must be strictly after the hunt candle
     rows = list(SELL_PATTERN[:6]) + [(102.0, 104.6, 99.8, 100.2)]
-    assert detect_sell(build(rows)) is None, "hunt and break in the same candle must not signal"
-    # 7) zone touch logic
-    zone = {"dir": "SELL", "top": 104.6, "bottom": 101.0, "t0": base + 9 * H1}
+    assert detect_sell(build(rows)) == [], "hunt and break in the same candle must not signal"
+    # 7) mode 2: the low that built the hunted high gets broken (later than mode 1)
+    m = build(M2_PATTERN[:10])
+    d9 = one(detect_sell(m), 1)                                   # candle 9 breaks the nearer low (101)
+    assert abs(d9["bottom"] - 101.0) < 1e-9
+    m = build(M2_PATTERN)
+    d10 = one(detect_sell(m), 2)                                  # candle 10 breaks the base low (98)
+    assert abs(d10["bottom"] - 98.0) < 1e-9 and abs(d10["top"] - 104.0) < 1e-9, "mode 2 zone wrong"
+    mb = build(M2_PATTERN, mirror_at=200.0)
+    one(detect_buy(mb), 2)
+    # 8) an OLD hunted swing high (many candles earlier) still works
+    filler = []
+    for i in range(120):
+        v = 102.0 + 0.2 * ((i % 4) - 1.5)
+        filler.append((v, v + 0.15, v - 0.15, v + 0.05))
+    rows = list(SELL_PATTERN[:6]) + filler + list(SELL_PATTERN[6:])
+    zs = [z for z in detect_sell(build(rows)) if z["swing_i"] == 2]
+    assert len(zs) == 1 and zs[0]["mode"] == 1, "old swing not handled"
+    assert zs[0]["sweep_i"] == 126 and abs(zs[0]["top"] - 104.0) < 1e-9, "old swing zone wrong"
+    # 9) zone touch logic
+    zone = {"dir": "SELL", "top": 104.0, "bottom": 101.0, "t0": base + 9 * H1}
     c5 = [{"t": base + 9 * H1 - 300, "o": 0, "h": 200, "l": 0, "c": 0},      # before zone -> ignored
           {"t": base + 9 * H1, "o": 100, "h": 100.8, "l": 99.9, "c": 100.5},
           {"t": base + 9 * H1 + 300, "o": 100.5, "h": 101.2, "l": 100.4, "c": 101.0}]
     t = find_touch(zone, c5)
     assert t and t["t"] == base + 9 * H1 + 300, "sell touch wrong"
-    zone = {"dir": "BUY", "top": 99.0, "bottom": 95.4, "t0": base + 9 * H1}
+    zone = {"dir": "BUY", "top": 99.0, "bottom": 96.0, "t0": base + 9 * H1}
     c5 = [{"t": base + 9 * H1, "o": 100, "h": 100.1, "l": 99.5, "c": 99.8},
           {"t": base + 9 * H1 + 300, "o": 99.8, "h": 99.9, "l": 98.9, "c": 99.0}]
     t = find_touch(zone, c5)
     assert t and t["t"] == base + 9 * H1 + 300, "buy touch wrong"
-    zone = {"dir": "BUY", "top": 99.0, "bottom": 95.4, "t0": base + 9 * H1}
     assert find_touch(zone, c5[:1]) is None, "no touch must give None"
     log("SELFTEST OK")
 
