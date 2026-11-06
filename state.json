@@ -152,10 +152,11 @@
    "dir": "BUY",
    "id": "USDJPY-B-1106-1330",
    "msg_id": 48,
-   "status": "active",
+   "status": "used",
    "sym": "USDJPY",
    "t0": 1793959200,
-   "top": 158.1649932861328
+   "top": 158.1649932861328,
+   "touch_t": 1793978700
   },
   {
    "bottom": 75843.296875,
