@@ -131,7 +131,7 @@
    "dir": "SELL",
    "id": "ETH-S-1105-1630",
    "msg_id": 42,
-   "status": "active",
+   "status": "expired",
    "sym": "ETH",
    "t0": 1793883600,
    "top": 2442.179931640625
