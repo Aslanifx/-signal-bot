@@ -246,10 +246,11 @@
    "id": "XAUUSD-B1-1109-0430",
    "mode": 1,
    "msg_id": 70,
-   "status": "active",
+   "status": "used",
    "sym": "XAUUSD",
    "t0": 1794186000,
-   "top": 4088.199951171875
+   "top": 4088.199951171875,
+   "touch_t": 1794234300
   },
   {
    "bottom": 4044.5,
