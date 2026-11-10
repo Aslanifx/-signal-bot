@@ -329,10 +329,11 @@
    "id": "SPX500-B1-1110-0930",
    "mode": 1,
    "msg_id": 89,
-   "status": "active",
+   "status": "used",
    "sym": "SPX500",
    "t0": 1794290400,
-   "top": 7586.5
+   "top": 7586.5,
+   "touch_t": 1794294300
   }
  ]
 }
