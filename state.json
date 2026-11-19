@@ -17,17 +17,6 @@
  },
  "zones": [
   {
-   "bottom": 4038.0,
-   "dir": "BUY",
-   "id": "XAUUSD-B-1104-2030",
-   "msg_id": 38,
-   "status": "used",
-   "sym": "XAUUSD",
-   "t0": 1793811600,
-   "top": 4062.10009765625,
-   "touch_t": 1793934300
-  },
-  {
    "bottom": 2402.780029296875,
    "dir": "SELL",
    "id": "ETH-S-1105-1630",
