@@ -774,10 +774,11 @@
    "id": "SPX500-B1-1119-0430",
    "mode": 1,
    "msg_id": 194,
-   "status": "active",
+   "status": "used",
    "sym": "SPX500",
    "t0": 1795050000,
-   "top": 7391.0
+   "top": 7391.0,
+   "touch_t": 1795050000
   }
  ]
 }
