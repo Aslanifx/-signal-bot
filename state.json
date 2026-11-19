@@ -799,10 +799,11 @@
    "id": "NAS100-B1-1119-1030",
    "mode": 1,
    "msg_id": 200,
-   "status": "active",
+   "status": "used",
    "sym": "NAS100",
    "t0": 1795071600,
-   "top": 27589.0
+   "top": 27589.0,
+   "touch_t": 1795101000
   },
   {
    "bottom": 7364.25,
