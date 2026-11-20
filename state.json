@@ -578,7 +578,7 @@
    "id": "GER40-S2-1116-1930",
    "mode": 2,
    "msg_id": 166,
-   "status": "active",
+   "status": "expired",
    "sym": "GER40",
    "t0": 1794844800,
    "top": 26817.439453125
@@ -589,7 +589,7 @@
    "id": "GER40-S1-1116-1930",
    "mode": 1,
    "msg_id": 167,
-   "status": "active",
+   "status": "expired",
    "sym": "GER40",
    "t0": 1794844800,
    "top": 26817.439453125
