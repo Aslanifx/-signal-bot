@@ -17,18 +17,6 @@
  },
  "zones": [
   {
-   "bottom": 4038.0,
-   "dir": "BUY",
-   "id": "XAUUSD-B1-1106-2230",
-   "mode": 1,
-   "msg_id": 58,
-   "status": "used",
-   "sym": "XAUUSD",
-   "t0": 1793991600,
-   "top": 4082.699951171875,
-   "touch_t": 1793991900
-  },
-  {
    "bottom": 158.10000610351562,
    "dir": "BUY",
    "id": "USDJPY-B1-1106-2330",
