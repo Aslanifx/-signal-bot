@@ -17,30 +17,6 @@
  },
  "zones": [
   {
-   "bottom": 26882.25,
-   "dir": "SELL",
-   "id": "NAS100-S1-1109-1130",
-   "mode": 1,
-   "msg_id": 74,
-   "status": "used",
-   "sym": "NAS100",
-   "t0": 1794211200,
-   "top": 27258.0,
-   "touch_t": 1794211200
-  },
-  {
-   "bottom": 157.9929962158203,
-   "dir": "SELL",
-   "id": "USDJPY-S1-1109-1130",
-   "mode": 1,
-   "msg_id": 75,
-   "status": "used",
-   "sym": "USDJPY",
-   "t0": 1794211200,
-   "top": 158.54400634765625,
-   "touch_t": 1794213000
-  },
-  {
    "bottom": 1.1139578819274902,
    "dir": "BUY",
    "id": "EURUSD-B1-1109-1230",
