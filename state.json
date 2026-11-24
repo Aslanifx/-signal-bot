@@ -908,10 +908,11 @@
    "id": "XAUUSD-B1-1124-1630",
    "mode": 1,
    "msg_id": 263,
-   "status": "active",
+   "status": "used",
    "sym": "XAUUSD",
    "t0": 1795525200,
-   "top": 3639.60009765625
+   "top": 3639.60009765625,
+   "touch_t": 1795525200
   }
  ]
 }
