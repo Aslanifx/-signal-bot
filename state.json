@@ -17,18 +17,6 @@
  },
  "zones": [
   {
-   "bottom": 4044.5,
-   "dir": "BUY",
-   "id": "XAUUSD-B2-1109-0530",
-   "mode": 2,
-   "msg_id": 71,
-   "status": "used",
-   "sym": "XAUUSD",
-   "t0": 1794189600,
-   "top": 4116.2001953125,
-   "touch_t": 1794207300
-  },
-  {
    "bottom": 26882.25,
    "dir": "SELL",
    "id": "NAS100-S1-1109-1130",
