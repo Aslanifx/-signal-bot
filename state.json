@@ -17,29 +17,6 @@
  },
  "zones": [
   {
-   "bottom": 4109.10009765625,
-   "dir": "SELL",
-   "id": "XAUUSD-S1-1110-1330",
-   "mode": 1,
-   "msg_id": 91,
-   "status": "expired",
-   "sym": "XAUUSD",
-   "t0": 1794304800,
-   "top": 4155.7998046875
-  },
-  {
-   "bottom": 157.9080047607422,
-   "dir": "BUY",
-   "id": "USDJPY-B1-1110-1330",
-   "mode": 1,
-   "msg_id": 92,
-   "status": "used",
-   "sym": "USDJPY",
-   "t0": 1794304800,
-   "top": 158.07200622558594,
-   "touch_t": 1794305700
-  },
-  {
    "bottom": 157.3800048828125,
    "dir": "BUY",
    "id": "USDJPY-B2-1110-2030",
