@@ -911,10 +911,11 @@
    "id": "US30-S1-1125-1330",
    "mode": 1,
    "msg_id": 272,
-   "status": "active",
+   "status": "used",
    "sym": "US30",
    "t0": 1795600800,
-   "top": 49990.0
+   "top": 49990.0,
+   "touch_t": 1795600800
   },
   {
    "bottom": 7120.5,
@@ -922,10 +923,11 @@
    "id": "SPX500-S1-1125-1330",
    "mode": 1,
    "msg_id": 273,
-   "status": "active",
+   "status": "used",
    "sym": "SPX500",
    "t0": 1795600800,
-   "top": 7171.0
+   "top": 7171.0,
+   "touch_t": 1795600800
   }
  ]
 }
